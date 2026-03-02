@@ -83,6 +83,25 @@ export const TOOLS: Tool[] = [
       required: ["wallet_id", "message"],
     },
   },
+  {
+    name: "buy_product",
+    description:
+      "Buy a product from the merchant agent using x402-style payment. " +
+      "The agent autonomously: (1) checks what payment is required, " +
+      "(2) sends ETH from the wallet to the merchant, " +
+      "(3) delivers the payment proof, and (4) receives the product. " +
+      "Price is 0.0001 ETH on Base Sepolia.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        wallet_id: {
+          type: "string",
+          description: "The Privy wallet ID to pay from",
+        },
+      },
+      required: ["wallet_id"],
+    },
+  },
 ];
 
 // ──────────────────────────────────────────────
@@ -210,6 +229,61 @@ export async function handleTool(
         { message }
       );
       return { signature: result.signature };
+    }
+
+    case "buy_product": {
+      const { wallet_id } = toolInput as { wallet_id: string };
+      const shopUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}/api/shop`
+        : "http://localhost:3000/api/shop";
+
+      // Step 1: Discover payment requirements (will get 402)
+      const probe = await fetch(shopUrl);
+      if (probe.status !== 402) {
+        const data = await probe.json();
+        return { message: "Unexpected response", data };
+      }
+      const { payment } = await probe.json();
+
+      // Step 2: Pay the merchant autonomously
+      const weiValue = BigInt(payment.price_wei);
+      const hexValue = "0x" + weiValue.toString(16);
+      const payResult = await privy.wallets().ethereum().sendTransaction(
+        wallet_id,
+        {
+          caip2: BASE_SEPOLIA,
+          params: {
+            transaction: {
+              to: payment.recipient,
+              value: hexValue,
+              chain_id: 84532,
+            },
+          },
+        }
+      );
+
+      // Step 3: Present payment proof, receive product
+      const purchase = await fetch(shopUrl, {
+        headers: { "X-Payment-Tx": payResult.hash },
+      });
+      const product = await purchase.json();
+
+      if (!purchase.ok) {
+        return {
+          error: "Payment sent but verification failed",
+          tx_hash: payResult.hash,
+          reason: product.reason,
+          note: "The tx may need a few seconds to be mined. Try again shortly.",
+        };
+      }
+
+      return {
+        success: true,
+        paid_eth: payment.price_eth,
+        tx_hash: payResult.hash,
+        explorer: `https://sepolia.basescan.org/tx/${payResult.hash}`,
+        product,
+      };
     }
 
     default:
