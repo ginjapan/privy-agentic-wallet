@@ -1,5 +1,6 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { privy } from "./privy";
+import { MERCHANT_ADDRESS, PAYMENT_REQUIREMENTS, verifyPayment, buildProduct } from "./shop";
 
 // Base Sepolia CAIP-2
 const BASE_SEPOLIA = "eip155:84532";
@@ -233,17 +234,9 @@ export async function handleTool(
 
     case "buy_product": {
       const { wallet_id } = toolInput as { wallet_id: string };
-      const shopUrl = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}/api/shop`
-        : "http://localhost:3000/api/shop";
 
-      // Step 1: Discover payment requirements (will get 402)
-      const probe = await fetch(shopUrl);
-      if (probe.status !== 402) {
-        const data = await probe.json();
-        return { message: "Unexpected response", data };
-      }
-      const { payment } = await probe.json();
+      // Step 1: Payment requirements (no HTTP call needed)
+      const payment = PAYMENT_REQUIREMENTS;
 
       // Step 2: Pay the merchant autonomously
       const weiValue = BigInt(payment.price_wei);
@@ -254,7 +247,7 @@ export async function handleTool(
           caip2: BASE_SEPOLIA,
           params: {
             transaction: {
-              to: payment.recipient,
+              to: MERCHANT_ADDRESS,
               value: hexValue,
               chain_id: 84532,
             },
@@ -262,17 +255,14 @@ export async function handleTool(
         }
       );
 
-      // Step 3: Present payment proof, receive product
-      const purchase = await fetch(shopUrl, {
-        headers: { "X-Payment-Tx": payResult.hash },
-      });
-      const product = await purchase.json();
+      // Step 3: Verify payment on-chain and deliver product
+      const { valid, reason, value } = await verifyPayment(payResult.hash);
 
-      if (!purchase.ok) {
+      if (!valid) {
         return {
           error: "Payment sent but verification failed",
           tx_hash: payResult.hash,
-          reason: product.reason,
+          reason,
           note: "The tx may need a few seconds to be mined. Try again shortly.",
         };
       }
@@ -282,7 +272,7 @@ export async function handleTool(
         paid_eth: payment.price_eth,
         tx_hash: payResult.hash,
         explorer: `https://sepolia.basescan.org/tx/${payResult.hash}`,
-        product,
+        product: buildProduct(payResult.hash, value!),
       };
     }
 
