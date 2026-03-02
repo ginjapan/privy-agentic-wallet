@@ -90,7 +90,7 @@ export const TOOLS: Tool[] = [
       "The agent autonomously: (1) checks what payment is required, " +
       "(2) sends ETH from the wallet to the merchant, " +
       "(3) delivers the payment proof, and (4) receives the product. " +
-      "Price is 0.0001 ETH on Base Sepolia.",
+      "Price is 0.00001 ETH on Base Sepolia.",
     input_schema: {
       type: "object" as const,
       properties: {

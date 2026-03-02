@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Merchant's receiving wallet (demo — can be any address)
 const MERCHANT_ADDRESS = "0x2F74235FB971f207A1713B358A0E96Be6eBea3a2";
-const PRICE_WEI = BigInt("100000000000000"); // 0.0001 ETH
+const PRICE_WEI = BigInt("10000000000000"); // 0.00001 ETH
 const BASE_SEPOLIA_RPC = "https://sepolia.base.org";
 
 async function verifyPayment(txHash: string): Promise<{
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
         payment: {
           protocol: "x402-simplified",
           description: "Premium weather data for Base Sepolia",
-          price_eth: "0.0001",
+          price_eth: "0.00001",
           price_wei: PRICE_WEI.toString(),
           recipient: MERCHANT_ADDRESS,
           chain: "Base Sepolia (84532)",
